@@ -3,13 +3,20 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 import math
 import random
 import csv
+import os
 
-TOKEN = "8569435543:AAHmCXEMKfqRbgYal7NAma_9j8NlmDPhzok"
+# ======================
+# TOKEN (Railway Safe)
+# ======================
+TOKEN = os.environ["8569435543:AAHmCXEMKfqRbgYal7NAma_9j8NlmDPhzok"]
 
+# ======================
+# MEMORY
+# ======================
 user_data_store = {}
 
 # ======================
-# TAX FUNCTIONS (كما هي)
+# TAX FUNCTIONS
 # ======================
 def floor_2(x):
     return math.floor(x * 100) / 100
@@ -19,7 +26,6 @@ def random_time():
     minute = random.randint(0, 59)
     second = random.randint(0, 59)
     return f"{hour:02d}:{minute:02d}:{second:02d}"
-
 
 # ======================
 # ADDRESS SYSTEM
@@ -44,16 +50,14 @@ def get_random_address(zip_code):
     except:
         return None
 
-
 # ======================
-# START MENU
+# START
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [["💰 Tax", "🏠 Home Address"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     await update.message.reply_text("اختر خدمة:", reply_markup=reply_markup)
-
 
 # ======================
 # MAIN HANDLER
@@ -63,7 +67,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
 
     # ======================
-    # HOME ADDRESS FLOW
+    # ADDRESS FLOW
     # ======================
     if text == "🏠 Home Address":
         user_data_store[chat_id] = "ADDRESS"
@@ -82,7 +86,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_data_store.pop(chat_id, None)
         return
-
 
     # ======================
     # TAX FLOW
@@ -136,7 +139,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = "اكتب مثل: 299.99 7.5"
 
     await update.message.reply_text(reply)
-
 
 # ======================
 # RUN BOT
