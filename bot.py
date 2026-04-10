@@ -8,7 +8,7 @@ import os
 # ======================
 # TOKEN (Railway Safe)
 # ======================
-TOKEN = os.environ["8569435543:AAHmCXEMKfqRbgYal7NAma_9j8NlmDPhzok"]
+TOKEN = os.environ["TOKEN"]
 
 # ======================
 # MEMORY
