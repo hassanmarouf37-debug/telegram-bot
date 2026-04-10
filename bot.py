@@ -2,11 +2,15 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import math
 import random
+import csv
 
 TOKEN = "8569435543:AAHmCXEMKfqRbgYal7NAma_9j8NlmDPhzok"
 
 user_data_store = {}
 
+# ======================
+# TAX FUNCTIONS (كما هي)
+# ======================
 def floor_2(x):
     return math.floor(x * 100) / 100
 
@@ -16,18 +20,73 @@ def random_time():
     second = random.randint(0, 59)
     return f"{hour:02d}:{minute:02d}:{second:02d}"
 
-# شاشة البداية
+
+# ======================
+# ADDRESS SYSTEM
+# ======================
+def get_random_address(zip_code):
+    results = []
+
+    try:
+        with open("addresses.csv", newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+
+            for row in reader:
+                if row["zip"] == zip_code:
+                    address = f"{row['number']} {row['street']}, {row['city']}, {row['state']} {row['zip']}"
+                    results.append(address)
+
+        if not results:
+            return None
+
+        return random.choice(results)
+
+    except:
+        return None
+
+
+# ======================
+# START MENU
+# ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [["💰 Tax"]]
+    keyboard = [["💰 Tax", "🏠 Home Address"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     await update.message.reply_text("اختر خدمة:", reply_markup=reply_markup)
 
-# التعامل مع الرسائل
+
+# ======================
+# MAIN HANDLER
+# ======================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
+    chat_id = update.message.chat_id
 
-    # ضغط Tax
+    # ======================
+    # HOME ADDRESS FLOW
+    # ======================
+    if text == "🏠 Home Address":
+        user_data_store[chat_id] = "ADDRESS"
+        await update.message.reply_text("اكتب ZIP code:")
+        return
+
+    if user_data_store.get(chat_id) == "ADDRESS":
+        zip_code = text
+
+        result = get_random_address(zip_code)
+
+        if result:
+            await update.message.reply_text(result)
+        else:
+            await update.message.reply_text("ما لقيت عناوين لهذا الـ ZIP")
+
+        user_data_store.pop(chat_id, None)
+        return
+
+
+    # ======================
+    # TAX FLOW
+    # ======================
     if text == "💰 Tax":
         keyboard = [
             ["1", "2", "3", "4", "5"],
@@ -38,28 +97,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("اختر عدد المنتجات:", reply_markup=reply_markup)
         return
 
-    # اختيار عدد المنتجات
     if text.isdigit():
         qty = int(text)
-        user_data_store[update.message.chat_id] = qty
+        user_data_store[chat_id] = qty
 
         await update.message.reply_text(
             f"تم اختيار {qty} منتجات\nالآن اكتب السعر والضريبة مثل:\n299.99 7.5"
         )
         return
 
-    # الحساب
     try:
         parts = text.split()
 
         if len(parts) != 2:
-            await update.message.reply_text("اكتب هيك: 299.99 7.5")
+            await update.message.reply_text("اكتب مثل: 299.99 7.5")
             return
 
         num = float(parts[0])
         tax_percent = float(parts[1])
 
-        qty = user_data_store.get(update.message.chat_id, 4)
+        qty = user_data_store.get(chat_id, 4)
 
         subtotal = floor_2(num * qty)
         tax = floor_2(subtotal * (tax_percent / 100))
@@ -81,6 +138,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply)
 
 
+# ======================
+# RUN BOT
+# ======================
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
