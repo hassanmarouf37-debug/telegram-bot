@@ -1,26 +1,22 @@
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import math
 import random
 import csv
 import os
 import json
 
-# ======================
-# TOKEN
-# ======================
 TOKEN = os.environ["TOKEN"]
 
-# ======================
-# MEMORY
-# ======================
 user_data_store = {}
 
-# ======================
-# USED INDEX STORAGE (BY ZIP)
-# ======================
 USED_FILE = "used.json"
+CARS_FILE = "cars.csv"
+CARS_USED_FILE = "cars_used.json"
 
+# ======================
+# LOAD / SAVE USED (ADDRESS)
+# ======================
 def load_used():
     try:
         with open(USED_FILE, "r", encoding="utf-8") as f:
@@ -35,16 +31,29 @@ def save_used(data):
 used_index = load_used()
 
 # ======================
-# TAX FUNCTIONS
+# LOAD / SAVE CARS LOOP
+# ======================
+def load_cars_used():
+    try:
+        with open(CARS_USED_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_cars_used(data):
+    with open(CARS_USED_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+cars_index = load_cars_used()
+
+# ======================
+# TAX
 # ======================
 def floor_2(x):
     return math.floor(x * 100) / 100
 
 def random_time():
-    hour = random.randint(10, 19)
-    minute = random.randint(0, 59)
-    second = random.randint(0, 59)
-    return f"{hour:02d}:{minute:02d}:{second:02d}"
+    return f"{random.randint(10,19):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}"
 
 # ======================
 # ADDRESS SYSTEM
@@ -52,47 +61,76 @@ def random_time():
 def get_sequential_address(zip_code):
     results = []
 
-    try:
-        with open("addresses.csv", newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
+    with open("addresses.csv", newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row["zip"] == zip_code:
+                results.append(row)
 
-            for row in reader:
-                if row["zip"] == zip_code:
-                    address = f"{row['number']} {row['street']}, {row['city']}, {row['state']} {row['zip']}"
-                    results.append(address)
+    if not results:
+        return None
 
-        if not results:
-            return None, 0, 0
+    total = len(results)
+    index = used_index.get(zip_code, 0)
 
-        total = len(results)
-        current_index = used_index.get(zip_code, 0)
+    if index >= total:
+        index = 0
 
-        if current_index >= total:
-            return None, total, 0
+    row = results[index]
 
-        address = results[current_index]
+    used_index[zip_code] = index + 1
+    save_used(used_index)
 
-        used_index[zip_code] = current_index + 1
-        save_used(used_index)
+    return row, index + 1, total - (index + 1)
 
-        remaining = total - (current_index + 1)
+# ======================
+# CAR SYSTEM
+# ======================
+def get_car_by_item(item_number):
+    cars = []
+    mspn = None
 
-        return address, current_index + 1, remaining
+    with open(CARS_FILE, newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
 
-    except:
-        return None, 0, 0
+        for row in reader:
+            if row["item"] == item_number:
+                cars.append(row["car"])
+                mspn = row["mspn"]
+
+    if not cars:
+        return None, None
+
+    total = len(cars)
+    index = cars_index.get(item_number, 0)
+
+    if index >= total:
+        index = 0
+
+    car = cars[index]
+
+    cars_index[item_number] = index + 1
+    save_cars_used(cars_index)
+
+    return mspn, car
 
 # ======================
 # START
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [["💰 Tax", "🏠 Home Address"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-    await update.message.reply_text("اختر خدمة:", reply_markup=reply_markup)
+    keyboard = [["💰 Tax", "🏠 Home Address"], ["🚗 Car"]]
+    await update.message.reply_text("اختر خدمة:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
 
 # ======================
-# MAIN HANDLER
+# CALLBACK (COPY BUTTONS)
+# ======================
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(f"📋 Copied: {query.data}")
+
+# ======================
+# MAIN
 # ======================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -100,108 +138,79 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state = user_data_store.get(chat_id)
 
-    # ======================
-    # STRICT STATE PROTECTION
-    # ======================
-    if state is None:
-        if text not in ["💰 Tax", "🏠 Home Address"]:
-            await update.message.reply_text("ابدأ من هنا 👇")
-            await start(update, context)
-            return
-
-    # ======================
-    # ADDRESS FLOW
-    # ======================
+    # ADDRESS START
     if text == "🏠 Home Address":
         user_data_store[chat_id] = "ADDRESS"
         await update.message.reply_text("اكتب ZIP code:")
         return
 
-    if user_data_store.get(chat_id) == "ADDRESS":
-        zip_code = text
+    # ADDRESS FLOW
+    if state == "ADDRESS":
+        row, current_num, remaining = get_sequential_address(text)
 
-        result, current_num, remaining = get_sequential_address(zip_code)
+        if not row:
+            await update.message.reply_text("لا يوجد عناوين")
+            user_data_store.pop(chat_id, None)
+            return
 
-        if result:
-            await update.message.reply_text(
-                f"Address {current_num}\n{result}\nRemaining: {remaining}"
-            )
-        else:
-            await update.message.reply_text("لا يوجد عناوين متاحة لهذا الـ ZIP")
+        street = row["number"] + " " + row["street"]
+        city = row["city"]
+        state_v = row["state"]
+        zip_v = row["zip"]
+
+        keyboard = [
+            [InlineKeyboardButton("📋 Street", callback_data=street)],
+            [InlineKeyboardButton("📋 City", callback_data=city)],
+            [InlineKeyboardButton("📋 State", callback_data=state_v)],
+            [InlineKeyboardButton("📋 ZIP", callback_data=zip_v)],
+        ]
+
+        await update.message.reply_text(
+            f"Address {current_num}\n\n"
+            f"Street: {street}\n"
+            f"City: {city}\n"
+            f"State: {state_v}\n"
+            f"ZIP: {zip_v}\n\n"
+            f"Remaining: {remaining}",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
         user_data_store.pop(chat_id, None)
         await start(update, context)
         return
 
-    # ======================
-    # TAX FLOW
-    # ======================
+    # CAR START
+    if text == "🚗 Car":
+        user_data_store[chat_id] = "CAR"
+        await update.message.reply_text("اكتب Item Number:")
+        return
+
+    # CAR FLOW
+    if state == "CAR":
+        mspn, car = get_car_by_item(text)
+
+        if mspn:
+            await update.message.reply_text(f"MSPN: {mspn}\nCar: {car}")
+        else:
+            await update.message.reply_text("Item غير موجود")
+
+        user_data_store.pop(chat_id, None)
+        await start(update, context)
+        return
+
+    # TAX START
     if text == "💰 Tax":
         user_data_store[chat_id] = "TAX"
-
-        keyboard = [
-            ["1", "2", "3", "4", "5"],
-            ["6", "7", "8", "9", "10"]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-        await update.message.reply_text("اختر عدد المنتجات:", reply_markup=reply_markup)
+        await update.message.reply_text("اختر عدد المنتجات:")
         return
-
-    if user_data_store.get(chat_id) == "TAX" and text.isdigit():
-        qty = int(text)
-        user_data_store[chat_id] = f"TAX_QTY:{qty}"
-
-        await update.message.reply_text(
-            f"تم اختيار {qty} منتجات\nالآن اكتب السعر والضريبة مثل:\n299.99 7.5"
-        )
-        return
-
-    # ======================
-    # TAX CALCULATION ONLY IF IN VALID STATE
-    # ======================
-    if isinstance(state, str) and state.startswith("TAX_QTY:"):
-        try:
-            parts = text.split()
-
-            if len(parts) != 2:
-                await update.message.reply_text("اكتب مثل: 299.99 7.5")
-                return
-
-            num = float(parts[0])
-            tax_percent = float(parts[1])
-
-            qty = int(state.split(":")[1])
-
-            subtotal = floor_2(num * qty)
-            tax = floor_2(subtotal * (tax_percent / 100))
-            total = floor_2(subtotal + tax)
-
-            time = random_time()
-
-            reply = (
-                f"Quantity: {qty}\n"
-                f"Subtotal: {subtotal:.2f}\n"
-                f"Tax: {tax:.2f}\n"
-                f"Total: {total:.2f}\n"
-                f"Time: {time}"
-            )
-
-            user_data_store.pop(chat_id, None)
-            await start(update, context)
-            await update.message.reply_text(reply)
-            return
-
-        except:
-            await update.message.reply_text("اكتب مثل: 299.99 7.5")
-            return
 
 # ======================
-# RUN BOT
+# RUN
 # ======================
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 app.run_polling()
