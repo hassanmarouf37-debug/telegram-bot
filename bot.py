@@ -4,6 +4,7 @@ import math
 import random
 import csv
 import os
+import json
 
 # ======================
 # TOKEN (Railway Safe)
@@ -14,6 +15,24 @@ TOKEN = os.environ["TOKEN"]
 # MEMORY
 # ======================
 user_data_store = {}
+
+# ======================
+# USED INDEX STORAGE (BY ZIP)
+# ======================
+USED_FILE = "used.json"
+
+def load_used():
+    try:
+        with open(USED_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_used(data):
+    with open(USED_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+used_index = load_used()
 
 # ======================
 # TAX FUNCTIONS
@@ -30,7 +49,7 @@ def random_time():
 # ======================
 # ADDRESS SYSTEM
 # ======================
-def get_random_address(zip_code):
+def get_sequential_address(zip_code):
     results = []
 
     try:
@@ -43,12 +62,25 @@ def get_random_address(zip_code):
                     results.append(address)
 
         if not results:
-            return None
+            return None, 0, 0
 
-        return random.choice(results)
+        total = len(results)
+        current_index = used_index.get(zip_code, 0)
+
+        if current_index >= total:
+            return None, total, 0
+
+        address = results[current_index]
+
+        used_index[zip_code] = current_index + 1
+        save_used(used_index)
+
+        remaining = total - (current_index + 1)
+
+        return address, current_index + 1, remaining
 
     except:
-        return None
+        return None, 0, 0
 
 # ======================
 # START
@@ -77,12 +109,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_data_store.get(chat_id) == "ADDRESS":
         zip_code = text
 
-        result = get_random_address(zip_code)
+        result, current_num, remaining = get_sequential_address(zip_code)
 
         if result:
-            await update.message.reply_text(result)
+            await update.message.reply_text(
+                f"Address {current_num}\n{result}\nRemaining: {remaining}"
+            )
         else:
-            await update.message.reply_text("ما لقيت عناوين لهذا الـ ZIP")
+            await update.message.reply_text(
+                "لا يوجد عناوين متاحة لهذا الـ ZIP"
+            )
 
         user_data_store.pop(chat_id, None)
         return
