@@ -12,7 +12,7 @@ user_data_store = {}
 SUPPORT_USERNAME = "@hassanmarouf37"
 
 # ======================
-# INIT SQLITE DB
+# INIT SQLITE
 # ======================
 conn = sqlite3.connect("bot.db")
 cursor = conn.cursor()
@@ -28,14 +28,7 @@ conn.commit()
 conn.close()
 
 # ======================
-# HELPERS
-# ======================
-def random_time():
-    import random
-    return f"{random.randint(10,19):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}"
-
-# ======================
-# ADDRESS SYSTEM (SQLITE)
+# ADDRESS SYSTEM
 # ======================
 def get_sequential_address(zip_code):
     conn = sqlite3.connect("bot.db")
@@ -66,20 +59,20 @@ def get_sequential_address(zip_code):
     selected = results[index]
 
     if row:
-        cursor.execute(
-            "UPDATE zip_counter SET idx=? WHERE zip=?",
-            (index + 1, zip_code)
-        )
+        cursor.execute("UPDATE zip_counter SET idx=? WHERE zip=?", (index + 1, zip_code))
     else:
-        cursor.execute(
-            "INSERT INTO zip_counter (zip, idx) VALUES (?, ?)",
-            (zip_code, 1)
-        )
+        cursor.execute("INSERT INTO zip_counter (zip, idx) VALUES (?, ?)", (zip_code, 1))
 
     conn.commit()
     conn.close()
 
     return selected, index + 1, total - (index + 1)
+
+# ======================
+# TAX SYSTEM
+# ======================
+def floor_2(x):
+    return math.floor(x * 100) / 100
 
 # ======================
 # START
@@ -110,7 +103,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_data_store.get(chat_id)
 
     # ======================
-    # ADDRESS FLOW
+    # ADDRESS
     # ======================
     if text == "🏠 Home Address":
         user_data_store[chat_id] = "ADDRESS"
@@ -121,9 +114,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row = get_sequential_address(text)
 
         if not row:
-            await update.message.reply_text(
-                "❌ ZIP code غير موجود أو غير صحيح"
-            )
+            await update.message.reply_text("❌ ZIP code غير موجود أو غير صحيح")
             user_data_store.pop(chat_id, None)
             await start(update, context)
             return
@@ -149,7 +140,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ======================
-    # CAR FLOW (basic fallback if not implemented)
+    # CAR (placeholder)
     # ======================
     if text == "🚗 Car":
         user_data_store[chat_id] = "CAR"
@@ -157,19 +148,61 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if state == "CAR":
-        await update.message.reply_text(
-            "❌ Car system غير مفعل بالكامل في هذا الإصدار"
-        )
+        await update.message.reply_text("❌ Car system غير مفعّل حالياً")
         user_data_store.pop(chat_id, None)
         await start(update, context)
         return
 
     # ======================
-    # TAX FLOW (placeholder)
+    # TAX START
     # ======================
     if text == "💰 Tax":
-        await update.message.reply_text("Tax system موجود سابقاً بالكود الأساسي")
+        user_data_store[chat_id] = {"step": "TAX_QTY"}
+        await update.message.reply_text("اختر عدد المنتجات:")
         return
+
+    # ======================
+    # TAX FLOW FIXED
+    # ======================
+    if isinstance(state, dict) and state.get("step") == "TAX_QTY":
+        try:
+            qty = int(text)
+            user_data_store[chat_id] = {"step": "TAX_PRICE", "qty": qty}
+            await update.message.reply_text("اكتب السعر والضريبة مثل:\n299.99 7.5")
+            return
+        except:
+            await update.message.reply_text("اكتب رقم صحيح")
+            return
+
+    if isinstance(state, dict) and state.get("step") == "TAX_PRICE":
+        try:
+            parts = text.split()
+
+            if len(parts) != 2:
+                raise ValueError
+
+            price = float(parts[0])
+            tax_percent = float(parts[1])
+            qty = state["qty"]
+
+            subtotal = floor_2(price * qty)
+            tax = floor_2(subtotal * (tax_percent / 100))
+            total = floor_2(subtotal + tax)
+
+            await update.message.reply_text(
+                f"Quantity: {qty}\n"
+                f"Subtotal: {subtotal:.2f}\n"
+                f"Tax: {tax:.2f}\n"
+                f"Total: {total:.2f}"
+            )
+
+            user_data_store.pop(chat_id, None)
+            await start(update, context)
+            return
+
+        except:
+            await update.message.reply_text("اكتب مثل: 299.99 7.5")
+            return
 
 # ======================
 # RUN BOT
