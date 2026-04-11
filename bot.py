@@ -115,7 +115,14 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     chat_id = update.message.chat_id
 
-    state = user_data.get(chat_id)
+    state = user_data.get(chat_id, None)
+
+    # ======================
+    # 🔥 HARD GUARD (FIX MAIN BUG)
+    # ======================
+    if not state and text not in ["💰 Tax", "🏠 Home Address", "🚗 Car", "/start", "/support"]:
+        await start(update, context)
+        return
 
     # ======================
     # TAX
@@ -125,17 +132,16 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("اختر عدد المنتجات:")
         return
 
-    if isinstance(state, dict) and state.get("step") == "qty":
+    if state and state.get("step") == "qty":
         try:
             qty = int(text)
             user_data[chat_id] = {"step": "price", "qty": qty}
             await update.message.reply_text("اكتب السعر والضريبة: 299.99 7.5")
-            return
         except:
-            await update.message.reply_text("رقم غير صحيح")
-            return
+            await update.message.reply_text("❌ رقم غير صحيح")
+        return
 
-    if isinstance(state, dict) and state.get("step") == "price":
+    if state and state.get("step") == "price":
         try:
             price, tax = map(float, text.split())
             qty = state["qty"]
@@ -154,10 +160,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             user_data.pop(chat_id, None)
             await start(update, context)
-            return
         except:
-            await update.message.reply_text("صيغة خطأ")
-            return
+            await update.message.reply_text("❌ صيغة خطأ")
+        return
 
     # ======================
     # ADDRESS
@@ -167,7 +172,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("اكتب ZIP code:")
         return
 
-    if isinstance(state, dict) and state.get("step") == "zip":
+    if state and state.get("step") == "zip":
+        if not text.isdigit():
+            await update.message.reply_text("❌ ZIP code غير صحيح")
+            return
+
         row = get_address(text)
 
         if not row:
@@ -199,16 +208,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("اكتب Item Number:")
         return
 
-    if isinstance(state, dict) and state.get("step") == "car":
+    if state and state.get("step") == "car":
         item = text.strip()
 
-        if len(item) < 4:
-            await update.message.reply_text("❌ Item غير موجود")
-            user_data.pop(chat_id, None)
-            await start(update, context)
+        if len(item) < 3:
+            await update.message.reply_text("❌ Item غير صحيح")
             return
 
-        # placeholder (لاحقاً CSV system)
         await update.message.reply_text(
             f"Item: {item}\nMSPN: 56028\nCar: Toyota Camry"
         )
@@ -218,7 +224,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 # ======================
-# BOT RUN
+# RUN BOT
 # ======================
 app = ApplicationBuilder().token(TOKEN).build()
 
