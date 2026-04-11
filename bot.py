@@ -1,7 +1,6 @@
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import math
-import random
 import csv
 import os
 import json
@@ -12,7 +11,6 @@ user_data_store = {}
 
 USED_FILE = "used.json"
 CARS_FILE = "cars.csv"
-CARS_USED_FILE = "cars_used.json"
 
 SUPPORT_USERNAME = "@hassanmarouf37"
 
@@ -33,28 +31,10 @@ def save_used(data):
 used_index = load_used()
 
 # ======================
-# CAR STORAGE
-# ======================
-def load_cars_used():
-    try:
-        with open(CARS_USED_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_cars_used(data):
-    with open(CARS_USED_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f)
-
-cars_index = load_cars_used()
-
-# ======================
 # HELPERS
 # ======================
-def floor_2(x):
-    return math.floor(x * 100) / 100
-
 def random_time():
+    import random
     return f"{random.randint(10,19):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}"
 
 # ======================
@@ -104,20 +84,14 @@ def get_car_by_item(item_number):
         return None, None
 
     total = len(cars)
-    index = cars_index.get(item_number, 0)
+    index = 0
 
-    if index >= total:
-        index = 0
-
-    car = cars[index]
-
-    cars_index[item_number] = index + 1
-    save_cars_used(cars_index)
+    car = cars[index % total]
 
     return mspn, car
 
 # ======================
-# START MENU
+# START
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -134,14 +108,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ======================
 async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(SUPPORT_USERNAME)
-
-# ======================
-# CALLBACK
-# ======================
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(f"📋 Copied: {query.data}")
 
 # ======================
 # MAIN HANDLER
@@ -165,8 +131,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not row:
             await update.message.reply_text(
-                "❌ ZIP code غير موجود أو غير صحيح\n"
-                "تأكد من الإدخال ثم حاول مرة أخرى"
+                "❌ ZIP code غير موجود أو غير صحيح"
             )
             user_data_store.pop(chat_id, None)
             await start(update, context)
@@ -177,21 +142,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state_v = row["state"]
         zip_v = row["zip"]
 
-        keyboard = [
-            [InlineKeyboardButton("📋 Street", callback_data=street)],
-            [InlineKeyboardButton("📋 City", callback_data=city)],
-            [InlineKeyboardButton("📋 State", callback_data=state_v)],
-            [InlineKeyboardButton("📋 ZIP", callback_data=zip_v)],
-        ]
-
         await update.message.reply_text(
             f"Address {current_num}\n\n"
-            f"Street: {street}\n"
+            f"Street Address: {street}\n"
             f"City: {city}\n"
             f"State: {state_v}\n"
-            f"ZIP: {zip_v}\n\n"
-            f"Remaining: {remaining}",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            f"ZIP Code: {zip_v}\n\n"
+            f"Remaining: {remaining}"
         )
 
         user_data_store.pop(chat_id, None)
@@ -210,11 +167,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mspn, car = get_car_by_item(text)
 
         if mspn:
-            await update.message.reply_text(f"MSPN: {mspn}\nCar: {car}")
+            await update.message.reply_text(
+                f"MSPN: {mspn}\nCar: {car}"
+            )
         else:
             await update.message.reply_text(
-                "❌ Item number غير موجود أو غير صحيح\n"
-                "تأكد من الإدخال ثم حاول مرة أخرى"
+                "❌ Item number غير موجود أو غير صحيح"
             )
 
         user_data_store.pop(chat_id, None)
@@ -236,7 +194,6 @@ app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("support", support))
-app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 app.run_polling()
