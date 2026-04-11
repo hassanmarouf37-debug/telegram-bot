@@ -17,7 +17,7 @@ SUPPORT_USERNAME = "@hassanmarouf37"
 user_data = {}
 
 # ======================
-# DB INIT
+# DB
 # ======================
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
@@ -39,7 +39,7 @@ def init_db():
 init_db()
 
 # ======================
-# UTIL
+# UTILS
 # ======================
 def rnd_time():
     return f"{random.randint(5,10):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}"
@@ -48,7 +48,7 @@ def fix(x):
     return math.floor(x * 100) / 100
 
 # ======================
-# ADDRESS SYSTEM
+# ADDRESS
 # ======================
 def get_address(zip_code):
     conn = get_conn()
@@ -61,10 +61,10 @@ def get_address(zip_code):
 
     rows = []
     with open("addresses.csv", newline='', encoding="utf-8") as f:
-        r = csv.DictReader(f)
-        for i in r:
-            if i["zip"] == zip_code:
-                rows.append(i)
+        reader = csv.DictReader(f)
+        for r in reader:
+            if r["zip"] == zip_code:
+                rows.append(r)
 
     if not rows:
         conn.close()
@@ -115,32 +115,27 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     chat_id = update.message.chat_id
 
-    state = user_data.get(chat_id, None)
+    state = user_data.get(chat_id)
 
     # ======================
-    # 🔥 HARD GUARD (FIX MAIN BUG)
-    # ======================
-    if not state and text not in ["💰 Tax", "🏠 Home Address", "🚗 Car", "/start", "/support"]:
-        await start(update, context)
-        return
-
-    # ======================
-    # TAX
+    # TAX START
     # ======================
     if text == "💰 Tax":
         user_data[chat_id] = {"step": "qty"}
         await update.message.reply_text("اختر عدد المنتجات:")
         return
 
+    # TAX QTY
     if state and state.get("step") == "qty":
-        try:
-            qty = int(text)
-            user_data[chat_id] = {"step": "price", "qty": qty}
-            await update.message.reply_text("اكتب السعر والضريبة: 299.99 7.5")
-        except:
-            await update.message.reply_text("❌ رقم غير صحيح")
+        if not text.isdigit():
+            await update.message.reply_text("❌ اكتب رقم صحيح")
+            return
+
+        user_data[chat_id] = {"step": "price", "qty": int(text)}
+        await update.message.reply_text("اكتب السعر والضريبة: 299.99 7.5")
         return
 
+    # TAX PRICE
     if state and state.get("step") == "price":
         try:
             price, tax = map(float, text.split())
@@ -160,18 +155,20 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             user_data.pop(chat_id, None)
             await start(update, context)
+            return
         except:
-            await update.message.reply_text("❌ صيغة خطأ")
-        return
+            await update.message.reply_text("❌ صيغة غير صحيحة")
+            return
 
     # ======================
-    # ADDRESS
+    # ADDRESS START
     # ======================
     if text == "🏠 Home Address":
         user_data[chat_id] = {"step": "zip"}
         await update.message.reply_text("اكتب ZIP code:")
         return
 
+    # ADDRESS STEP
     if state and state.get("step") == "zip":
         if not text.isdigit():
             await update.message.reply_text("❌ ZIP code غير صحيح")
@@ -201,18 +198,19 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ======================
-    # CAR (FIXED)
+    # CAR START
     # ======================
     if text == "🚗 Car":
         user_data[chat_id] = {"step": "car"}
         await update.message.reply_text("اكتب Item Number:")
         return
 
+    # CAR STEP
     if state and state.get("step") == "car":
         item = text.strip()
 
         if len(item) < 3:
-            await update.message.reply_text("❌ Item غير صحيح")
+            await update.message.reply_text("❌ Item غير موجود")
             return
 
         await update.message.reply_text(
@@ -224,7 +222,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 # ======================
-# RUN BOT
+# BOT RUN
 # ======================
 app = ApplicationBuilder().token(TOKEN).build()
 
