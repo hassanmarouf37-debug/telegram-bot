@@ -7,7 +7,7 @@ import os
 import json
 
 # ======================
-# TOKEN (Railway Safe)
+# TOKEN
 # ======================
 TOKEN = os.environ["TOKEN"]
 
@@ -98,15 +98,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     chat_id = update.message.chat_id
 
-    valid_buttons = ["💰 Tax", "🏠 Home Address"]
+    state = user_data_store.get(chat_id)
 
     # ======================
-    # STATE GUARD (ANTI CONFUSION)
+    # STRICT STATE PROTECTION
     # ======================
-    if user_data_store.get(chat_id) not in ["ADDRESS"] and text not in valid_buttons and not text.isdigit():
-        await update.message.reply_text("ابدأ من هنا 👇")
-        await start(update, context)
-        return
+    if state is None:
+        if text not in ["💰 Tax", "🏠 Home Address"]:
+            await update.message.reply_text("ابدأ من هنا 👇")
+            await start(update, context)
+            return
 
     # ======================
     # ADDRESS FLOW
@@ -126,9 +127,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Address {current_num}\n{result}\nRemaining: {remaining}"
             )
         else:
-            await update.message.reply_text(
-                "لا يوجد عناوين متاحة لهذا الـ ZIP"
-            )
+            await update.message.reply_text("لا يوجد عناوين متاحة لهذا الـ ZIP")
 
         user_data_store.pop(chat_id, None)
         await start(update, context)
@@ -138,6 +137,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # TAX FLOW
     # ======================
     if text == "💰 Tax":
+        user_data_store[chat_id] = "TAX"
+
         keyboard = [
             ["1", "2", "3", "4", "5"],
             ["6", "7", "8", "9", "10"]
@@ -147,45 +148,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("اختر عدد المنتجات:", reply_markup=reply_markup)
         return
 
-    if text.isdigit():
+    if user_data_store.get(chat_id) == "TAX" and text.isdigit():
         qty = int(text)
-        user_data_store[chat_id] = qty
+        user_data_store[chat_id] = f"TAX_QTY:{qty}"
 
         await update.message.reply_text(
             f"تم اختيار {qty} منتجات\nالآن اكتب السعر والضريبة مثل:\n299.99 7.5"
         )
         return
 
-    try:
-        parts = text.split()
+    # ======================
+    # TAX CALCULATION ONLY IF IN VALID STATE
+    # ======================
+    if isinstance(state, str) and state.startswith("TAX_QTY:"):
+        try:
+            parts = text.split()
 
-        if len(parts) != 2:
-            await update.message.reply_text("اكتب مثل: 299.99 7.5")
+            if len(parts) != 2:
+                await update.message.reply_text("اكتب مثل: 299.99 7.5")
+                return
+
+            num = float(parts[0])
+            tax_percent = float(parts[1])
+
+            qty = int(state.split(":")[1])
+
+            subtotal = floor_2(num * qty)
+            tax = floor_2(subtotal * (tax_percent / 100))
+            total = floor_2(subtotal + tax)
+
+            time = random_time()
+
+            reply = (
+                f"Quantity: {qty}\n"
+                f"Subtotal: {subtotal:.2f}\n"
+                f"Tax: {tax:.2f}\n"
+                f"Total: {total:.2f}\n"
+                f"Time: {time}"
+            )
+
+            user_data_store.pop(chat_id, None)
+            await start(update, context)
+            await update.message.reply_text(reply)
             return
 
-        num = float(parts[0])
-        tax_percent = float(parts[1])
-
-        qty = user_data_store.get(chat_id, 4)
-
-        subtotal = floor_2(num * qty)
-        tax = floor_2(subtotal * (tax_percent / 100))
-        total = floor_2(subtotal + tax)
-
-        time = random_time()
-
-        reply = (
-            f"Quantity: {qty}\n"
-            f"Subtotal: {subtotal:.2f}\n"
-            f"Tax: {tax:.2f}\n"
-            f"Total: {total:.2f}\n"
-            f"Time: {time}"
-        )
-
-    except:
-        reply = "اكتب مثل: 299.99 7.5"
-
-    await update.message.reply_text(reply)
+        except:
+            await update.message.reply_text("اكتب مثل: 299.99 7.5")
+            return
 
 # ======================
 # RUN BOT
