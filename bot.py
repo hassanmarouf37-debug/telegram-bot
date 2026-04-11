@@ -14,13 +14,10 @@ USED_FILE = "used.json"
 CARS_FILE = "cars.csv"
 CARS_USED_FILE = "cars_used.json"
 
-# ======================
-# SUPPORT
-# ======================
 SUPPORT_USERNAME = "@hassanmarouf37"
 
 # ======================
-# LOAD USED (ADDRESS)
+# ADDRESS STORAGE
 # ======================
 def load_used():
     try:
@@ -120,7 +117,7 @@ def get_car_by_item(item_number):
     return mspn, car
 
 # ======================
-# START
+# START MENU
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -133,13 +130,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ======================
-# SUPPORT COMMAND
+# SUPPORT
 # ======================
 async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(SUPPORT_USERNAME)
 
 # ======================
-# CALLBACK (COPY BUTTONS)
+# CALLBACK
 # ======================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -167,7 +164,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row, current_num, remaining = get_sequential_address(text)
 
         if not row:
-            await update.message.reply_text("لا يوجد عناوين")
+            await update.message.reply_text(
+                "❌ ZIP code غير موجود أو غير صحيح\n"
+                "تأكد من الإدخال ثم حاول مرة أخرى"
+            )
             user_data_store.pop(chat_id, None)
             await start(update, context)
             return
@@ -212,7 +212,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if mspn:
             await update.message.reply_text(f"MSPN: {mspn}\nCar: {car}")
         else:
-            await update.message.reply_text("❌ Item غير موجود")
+            await update.message.reply_text(
+                "❌ Item number غير موجود أو غير صحيح\n"
+                "تأكد من الإدخال ثم حاول مرة أخرى"
+            )
 
         user_data_store.pop(chat_id, None)
         await start(update, context)
