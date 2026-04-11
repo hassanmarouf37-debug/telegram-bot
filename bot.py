@@ -4,6 +4,7 @@ import math
 import csv
 import os
 import sqlite3
+import random
 
 TOKEN = os.environ["TOKEN"]
 
@@ -12,7 +13,7 @@ user_data_store = {}
 SUPPORT_USERNAME = "@hassanmarouf37"
 
 # ======================
-# INIT SQLITE
+# SQLITE INIT
 # ======================
 conn = sqlite3.connect("bot.db")
 cursor = conn.cursor()
@@ -28,7 +29,19 @@ conn.commit()
 conn.close()
 
 # ======================
-# ADDRESS SYSTEM
+# HELPERS
+# ======================
+def random_time():
+    hour = random.randint(5, 10)
+    minute = random.randint(0, 59)
+    second = random.randint(0, 59)
+    return f"{hour:02d}:{minute:02d}:{second:02d}"
+
+def floor_2(x):
+    return math.floor(x * 100) / 100
+
+# ======================
+# ADDRESS SYSTEM (SQLITE)
 # ======================
 def get_sequential_address(zip_code):
     conn = sqlite3.connect("bot.db")
@@ -59,20 +72,20 @@ def get_sequential_address(zip_code):
     selected = results[index]
 
     if row:
-        cursor.execute("UPDATE zip_counter SET idx=? WHERE zip=?", (index + 1, zip_code))
+        cursor.execute(
+            "UPDATE zip_counter SET idx=? WHERE zip=?",
+            (index + 1, zip_code)
+        )
     else:
-        cursor.execute("INSERT INTO zip_counter (zip, idx) VALUES (?, ?)", (zip_code, 1))
+        cursor.execute(
+            "INSERT INTO zip_counter (zip, idx) VALUES (?, ?)",
+            (zip_code, 1)
+        )
 
     conn.commit()
     conn.close()
 
     return selected, index + 1, total - (index + 1)
-
-# ======================
-# TAX SYSTEM
-# ======================
-def floor_2(x):
-    return math.floor(x * 100) / 100
 
 # ======================
 # START
@@ -154,24 +167,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ======================
-    # TAX START
+    # TAX START (FIXED BUTTON FLOW)
     # ======================
     if text == "💰 Tax":
+        keyboard = [
+            ["1", "2", "3", "4", "5"],
+            ["6", "7", "8", "9", "10"]
+        ]
         user_data_store[chat_id] = {"step": "TAX_QTY"}
-        await update.message.reply_text("اختر عدد المنتجات:")
+
+        await update.message.reply_text(
+            "اختر عدد المنتجات:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
         return
 
     # ======================
-    # TAX FLOW FIXED
+    # TAX FLOW
     # ======================
     if isinstance(state, dict) and state.get("step") == "TAX_QTY":
         try:
             qty = int(text)
             user_data_store[chat_id] = {"step": "TAX_PRICE", "qty": qty}
-            await update.message.reply_text("اكتب السعر والضريبة مثل:\n299.99 7.5")
+
+            await update.message.reply_text(
+                "اكتب السعر والضريبة مثل:\n299.99 7.5",
+                reply_markup=ReplyKeyboardMarkup([[]], resize_keyboard=True)
+            )
             return
         except:
-            await update.message.reply_text("اكتب رقم صحيح")
+            await update.message.reply_text("اكتب رقم صحيح من 1 إلى 10")
             return
 
     if isinstance(state, dict) and state.get("step") == "TAX_PRICE":
@@ -192,8 +217,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"Quantity: {qty}\n"
                 f"Subtotal: {subtotal:.2f}\n"
-                f"Tax: {tax:.2f}\n"
-                f"Total: {total:.2f}"
+                f"Tax ({tax_percent}%): {tax:.2f}\n"
+                f"Total: {total:.2f}\n"
+                f"Time: {random_time()}"
             )
 
             user_data_store.pop(chat_id, None)
