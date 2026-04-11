@@ -14,10 +14,13 @@ USED_FILE = "used.json"
 CARS_FILE = "cars.csv"
 CARS_USED_FILE = "cars_used.json"
 
+# ======================
+# SUPPORT
+# ======================
 SUPPORT_USERNAME = "@hassanmarouf37"
 
 # ======================
-# ADDRESS STORAGE
+# LOAD USED (ADDRESS)
 # ======================
 def load_used():
     try:
@@ -117,7 +120,7 @@ def get_car_by_item(item_number):
     return mspn, car
 
 # ======================
-# START MENU
+# START
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -130,7 +133,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ======================
-# CALLBACK (COPY)
+# SUPPORT COMMAND
+# ======================
+async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(SUPPORT_USERNAME)
+
+# ======================
+# CALLBACK (COPY BUTTONS)
 # ======================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -145,13 +154,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
 
     state = user_data_store.get(chat_id)
-
-    # ======================
-    # SUPPORT
-    # ======================
-    if text == "/support":
-        await update.message.reply_text(SUPPORT_USERNAME)
-        return
 
     # ======================
     # ADDRESS START
@@ -211,9 +213,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"MSPN: {mspn}\nCar: {car}")
         else:
             await update.message.reply_text("❌ Item غير موجود")
-            user_data_store.pop(chat_id, None)
-            await start(update, context)
-            return
 
         user_data_store.pop(chat_id, None)
         await start(update, context)
@@ -233,6 +232,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("support", support))
 app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
