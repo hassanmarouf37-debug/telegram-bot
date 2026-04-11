@@ -17,11 +17,14 @@ SUPPORT_USERNAME = "@hassanmarouf37"
 user_data = {}
 
 # ======================
-# DB
+# DB CONNECTION
 # ======================
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
 
+# ======================
+# INIT DB
+# ======================
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
@@ -33,13 +36,20 @@ def init_db():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS car_counter (
+        item TEXT PRIMARY KEY,
+        idx INTEGER DEFAULT 0
+    )
+    """)
+
     conn.commit()
     conn.close()
 
 init_db()
 
 # ======================
-# UTILS
+# UTIL
 # ======================
 def rnd_time():
     return f"{random.randint(5,10):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}"
@@ -48,7 +58,7 @@ def fix(x):
     return math.floor(x * 100) / 100
 
 # ======================
-# ADDRESS
+# ADDRESS SYSTEM
 # ======================
 def get_address(zip_code):
     conn = get_conn()
@@ -88,6 +98,51 @@ def get_address(zip_code):
     return selected, idx + 1, total - (idx + 1)
 
 # ======================
+# CAR SYSTEM (LOOP + CSV)
+# ======================
+def get_car(item_code):
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT idx FROM car_counter WHERE item=%s", (item_code,))
+    row = cur.fetchone()
+
+    idx = row[0] if row else 0
+
+    cars = []
+    mspn = None
+
+    with open("cars.csv", newline='', encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+
+        for r in reader:
+            if r["item"] == item_code:
+                mspn = r["mspn"]
+                cars = [r[f"car{i}"] for i in range(1, 11)]
+                break
+
+    if not cars:
+        conn.close()
+        return None
+
+    total = len(cars)
+
+    if idx >= total:
+        idx = 0
+
+    selected_car = cars[idx]
+
+    if row:
+        cur.execute("UPDATE car_counter SET idx=%s WHERE item=%s", (idx + 1, item_code))
+    else:
+        cur.execute("INSERT INTO car_counter (item, idx) VALUES (%s, %s)", (item_code, 1))
+
+    conn.commit()
+    conn.close()
+
+    return mspn, selected_car
+
+# ======================
 # START
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,14 +173,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_data.get(chat_id)
 
     # ======================
-    # TAX START
+    # TAX
     # ======================
     if text == "💰 Tax":
         user_data[chat_id] = {"step": "qty"}
         await update.message.reply_text("اختر عدد المنتجات:")
         return
 
-    # TAX QTY
     if state and state.get("step") == "qty":
         if not text.isdigit():
             await update.message.reply_text("❌ اكتب رقم صحيح")
@@ -135,7 +189,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("اكتب السعر والضريبة: 299.99 7.5")
         return
 
-    # TAX PRICE
     if state and state.get("step") == "price":
         try:
             price, tax = map(float, text.split())
@@ -156,22 +209,22 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_data.pop(chat_id, None)
             await start(update, context)
             return
+
         except:
             await update.message.reply_text("❌ صيغة غير صحيحة")
             return
 
     # ======================
-    # ADDRESS START
+    # ADDRESS
     # ======================
     if text == "🏠 Home Address":
         user_data[chat_id] = {"step": "zip"}
         await update.message.reply_text("اكتب ZIP code:")
         return
 
-    # ADDRESS STEP
     if state and state.get("step") == "zip":
         if not text.isdigit():
-            await update.message.reply_text("❌ ZIP code غير صحيح")
+            await update.message.reply_text("❌ ZIP غير صحيح")
             return
 
         row = get_address(text)
@@ -198,23 +251,30 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ======================
-    # CAR START
+    # CAR SYSTEM
     # ======================
     if text == "🚗 Car":
         user_data[chat_id] = {"step": "car"}
         await update.message.reply_text("اكتب Item Number:")
         return
 
-    # CAR STEP
     if state and state.get("step") == "car":
         item = text.strip()
 
-        if len(item) < 3:
+        result = get_car(item)
+
+        if not result:
             await update.message.reply_text("❌ Item غير موجود")
+            user_data.pop(chat_id, None)
+            await start(update, context)
             return
 
+        mspn, car = result
+
         await update.message.reply_text(
-            f"Item: {item}\nMSPN: 56028\nCar: Toyota Camry"
+            f"Item: {item}\n"
+            f"MSPN: {mspn}\n"
+            f"Car: {car}"
         )
 
         user_data.pop(chat_id, None)
@@ -222,7 +282,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 # ======================
-# BOT RUN
+# RUN BOT
 # ======================
 app = ApplicationBuilder().token(TOKEN).build()
 
