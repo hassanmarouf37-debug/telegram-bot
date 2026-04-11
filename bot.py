@@ -98,6 +98,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     chat_id = update.message.chat_id
 
+    valid_buttons = ["💰 Tax", "🏠 Home Address"]
+
+    # ======================
+    # STATE GUARD (ANTI CONFUSION)
+    # ======================
+    if user_data_store.get(chat_id) not in ["ADDRESS"] and text not in valid_buttons and not text.isdigit():
+        await update.message.reply_text("ابدأ من هنا 👇")
+        await start(update, context)
+        return
+
     # ======================
     # ADDRESS FLOW
     # ======================
@@ -121,6 +131,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         user_data_store.pop(chat_id, None)
+        await start(update, context)
         return
 
     # ======================
