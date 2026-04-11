@@ -3,51 +3,52 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 import math
 import csv
 import os
-import sqlite3
+import psycopg2
 import random
 
 TOKEN = os.environ["TOKEN"]
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 user_data_store = {}
 
 SUPPORT_USERNAME = "@hassanmarouf37"
 
 # ======================
-# SQLITE INIT
+# DB INIT
 # ======================
-conn = sqlite3.connect("bot.db")
-cursor = conn.cursor()
+def init_db():
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS zip_counter (
-    zip TEXT PRIMARY KEY,
-    idx INTEGER
-)
-""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS zip_counter (
+        zip TEXT PRIMARY KEY,
+        idx INTEGER DEFAULT 0
+    )
+    """)
 
-conn.commit()
-conn.close()
+    conn.commit()
+    conn.close()
+
+init_db()
 
 # ======================
 # HELPERS
 # ======================
 def random_time():
-    hour = random.randint(5, 10)
-    minute = random.randint(0, 59)
-    second = random.randint(0, 59)
-    return f"{hour:02d}:{minute:02d}:{second:02d}"
+    return f"{random.randint(5,10):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}"
 
 def floor_2(x):
     return math.floor(x * 100) / 100
 
 # ======================
-# ADDRESS SYSTEM (SQLITE)
+# ADDRESS SYSTEM (POSTGRESQL)
 # ======================
 def get_sequential_address(zip_code):
-    conn = sqlite3.connect("bot.db")
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT idx FROM zip_counter WHERE zip=?", (zip_code,))
+    cursor.execute("SELECT idx FROM zip_counter WHERE zip=%s", (zip_code,))
     row = cursor.fetchone()
 
     index = row[0] if row else 0
@@ -73,12 +74,12 @@ def get_sequential_address(zip_code):
 
     if row:
         cursor.execute(
-            "UPDATE zip_counter SET idx=? WHERE zip=?",
+            "UPDATE zip_counter SET idx=%s WHERE zip=%s",
             (index + 1, zip_code)
         )
     else:
         cursor.execute(
-            "INSERT INTO zip_counter (zip, idx) VALUES (?, ?)",
+            "INSERT INTO zip_counter (zip, idx) VALUES (%s, %s)",
             (zip_code, 1)
         )
 
@@ -127,24 +128,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row = get_sequential_address(text)
 
         if not row:
-            await update.message.reply_text("❌ ZIP code غير موجود أو غير صحيح")
+            await update.message.reply_text("❌ ZIP code غير موجود")
             user_data_store.pop(chat_id, None)
             await start(update, context)
             return
 
-        data, current_num, remaining = row
-
-        street = f"{data['number']} {data['street']}"
-        city = data["city"]
-        state_v = data["state"]
-        zip_v = data["zip"]
+        data, current, remaining = row
 
         await update.message.reply_text(
-            f"Address {current_num}\n\n"
-            f"Street Address: {street}\n"
-            f"City: {city}\n"
-            f"State: {state_v}\n"
-            f"ZIP Code: {zip_v}\n\n"
+            f"Address {current}\n\n"
+            f"Street: {data['number']} {data['street']}\n"
+            f"City: {data['city']}\n"
+            f"State: {data['state']}\n"
+            f"ZIP: {data['zip']}\n\n"
             f"Remaining: {remaining}"
         )
 
@@ -153,61 +149,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ======================
-    # CAR (placeholder)
-    # ======================
-    if text == "🚗 Car":
-        user_data_store[chat_id] = "CAR"
-        await update.message.reply_text("اكتب Item Number:")
-        return
-
-    if state == "CAR":
-        await update.message.reply_text("❌ Car system غير مفعّل حالياً")
-        user_data_store.pop(chat_id, None)
-        await start(update, context)
-        return
-
-    # ======================
-    # TAX START (FIXED BUTTON FLOW)
+    # TAX
     # ======================
     if text == "💰 Tax":
-        keyboard = [
-            ["1", "2", "3", "4", "5"],
-            ["6", "7", "8", "9", "10"]
-        ]
         user_data_store[chat_id] = {"step": "TAX_QTY"}
-
-        await update.message.reply_text(
-            "اختر عدد المنتجات:",
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        )
+        await update.message.reply_text("اختر عدد المنتجات:")
         return
 
-    # ======================
-    # TAX FLOW
-    # ======================
     if isinstance(state, dict) and state.get("step") == "TAX_QTY":
         try:
             qty = int(text)
             user_data_store[chat_id] = {"step": "TAX_PRICE", "qty": qty}
-
-            await update.message.reply_text(
-                "اكتب السعر والضريبة مثل:\n299.99 7.5",
-                reply_markup=ReplyKeyboardMarkup([[]], resize_keyboard=True)
-            )
+            await update.message.reply_text("اكتب السعر والضريبة مثل: 299.99 7.5")
             return
         except:
-            await update.message.reply_text("اكتب رقم صحيح من 1 إلى 10")
+            await update.message.reply_text("اكتب رقم صحيح")
             return
 
     if isinstance(state, dict) and state.get("step") == "TAX_PRICE":
         try:
-            parts = text.split()
-
-            if len(parts) != 2:
-                raise ValueError
-
-            price = float(parts[0])
-            tax_percent = float(parts[1])
+            price, tax_percent = map(float, text.split())
             qty = state["qty"]
 
             subtotal = floor_2(price * qty)
