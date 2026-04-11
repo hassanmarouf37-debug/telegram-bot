@@ -14,8 +14,10 @@ USED_FILE = "used.json"
 CARS_FILE = "cars.csv"
 CARS_USED_FILE = "cars_used.json"
 
+SUPPORT_USERNAME = "@hassanmarouf37"
+
 # ======================
-# LOAD / SAVE USED (ADDRESS)
+# ADDRESS STORAGE
 # ======================
 def load_used():
     try:
@@ -31,7 +33,7 @@ def save_used(data):
 used_index = load_used()
 
 # ======================
-# LOAD / SAVE CARS LOOP
+# CAR STORAGE
 # ======================
 def load_cars_used():
     try:
@@ -47,7 +49,7 @@ def save_cars_used(data):
 cars_index = load_cars_used()
 
 # ======================
-# TAX
+# HELPERS
 # ======================
 def floor_2(x):
     return math.floor(x * 100) / 100
@@ -115,14 +117,20 @@ def get_car_by_item(item_number):
     return mspn, car
 
 # ======================
-# START
+# START MENU
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [["💰 Tax", "🏠 Home Address"], ["🚗 Car"]]
-    await update.message.reply_text("اختر خدمة:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    keyboard = [
+        ["💰 Tax", "🏠 Home Address"],
+        ["🚗 Car"]
+    ]
+    await update.message.reply_text(
+        "اختر خدمة:",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
 
 # ======================
-# CALLBACK (COPY BUTTONS)
+# CALLBACK (COPY)
 # ======================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -130,7 +138,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(f"📋 Copied: {query.data}")
 
 # ======================
-# MAIN
+# MAIN HANDLER
 # ======================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -138,22 +146,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     state = user_data_store.get(chat_id)
 
+    # ======================
+    # SUPPORT
+    # ======================
+    if text == "/support":
+        await update.message.reply_text(SUPPORT_USERNAME)
+        return
+
+    # ======================
     # ADDRESS START
+    # ======================
     if text == "🏠 Home Address":
         user_data_store[chat_id] = "ADDRESS"
         await update.message.reply_text("اكتب ZIP code:")
         return
 
-    # ADDRESS FLOW
     if state == "ADDRESS":
         row, current_num, remaining = get_sequential_address(text)
 
         if not row:
             await update.message.reply_text("لا يوجد عناوين")
             user_data_store.pop(chat_id, None)
+            await start(update, context)
             return
 
-        street = row["number"] + " " + row["street"]
+        street = f"{row['number']} {row['street']}"
         city = row["city"]
         state_v = row["state"]
         zip_v = row["zip"]
@@ -179,33 +196,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return
 
+    # ======================
     # CAR START
+    # ======================
     if text == "🚗 Car":
         user_data_store[chat_id] = "CAR"
         await update.message.reply_text("اكتب Item Number:")
         return
 
-    # CAR FLOW
     if state == "CAR":
         mspn, car = get_car_by_item(text)
 
         if mspn:
             await update.message.reply_text(f"MSPN: {mspn}\nCar: {car}")
         else:
-            await update.message.reply_text("Item غير موجود")
+            await update.message.reply_text("❌ Item غير موجود")
+            user_data_store.pop(chat_id, None)
+            await start(update, context)
+            return
 
         user_data_store.pop(chat_id, None)
         await start(update, context)
         return
 
+    # ======================
     # TAX START
+    # ======================
     if text == "💰 Tax":
         user_data_store[chat_id] = "TAX"
         await update.message.reply_text("اختر عدد المنتجات:")
         return
 
 # ======================
-# RUN
+# RUN BOT
 # ======================
 app = ApplicationBuilder().token(TOKEN).build()
 
