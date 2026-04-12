@@ -104,7 +104,7 @@ def get_address(zip_code):
     return selected, idx + 1, total - (idx + 1)
 
 # ======================
-# CAR SYSTEM
+# CAR SYSTEM (UPDATED)
 # ======================
 def get_car(item_code):
     conn = get_conn()
@@ -116,14 +116,16 @@ def get_car(item_code):
     idx = row[0] if row else 0
 
     cars = []
-    mspn = None
 
+    # جمع كل السيارات من أي عدد أعمدة carX
     with open("cars.csv", newline='', encoding="utf-8") as f:
         reader = csv.DictReader(f)
+
         for r in reader:
             if r["item"] == item_code:
-                mspn = r["mspn"]
-                cars = [r[f"car{i}"] for i in range(1, 11)]
+                for key in r.keys():
+                    if key.startswith("car") and r[key]:
+                        cars.append(r[key])
                 break
 
     if not cars:
@@ -138,14 +140,20 @@ def get_car(item_code):
     selected_car = cars[idx]
 
     if row:
-        cur.execute("UPDATE car_counter SET idx=%s WHERE item=%s", (idx + 1, item_code))
+        cur.execute(
+            "UPDATE car_counter SET idx=%s WHERE item=%s",
+            (idx + 1, item_code)
+        )
     else:
-        cur.execute("INSERT INTO car_counter (item, idx) VALUES (%s, %s)", (item_code, 1))
+        cur.execute(
+            "INSERT INTO car_counter (item, idx) VALUES (%s, %s)",
+            (item_code, 1)
+        )
 
     conn.commit()
     conn.close()
 
-    return mspn, selected_car
+    return selected_car, idx + 1, total
 
 # ======================
 # START
@@ -197,7 +205,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # TAX QTY
     if state and state.get("step") == "qty":
         if not text.isdigit():
             return
@@ -206,7 +213,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("اكتب السعر والضريبة: 299.99 7.5")
         return
 
-    # TAX PRICE
     if state and state.get("step") == "price":
         try:
             price, tax = map(float, text.split())
@@ -285,12 +291,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await start(update, context)
             return
 
-        mspn, car = result
+        car, current, total = result
 
         await update.message.reply_text(
             f"Item: {item}\n"
-            f"MSPN: {mspn}\n"
-            f"Car: {car}"
+            f"Car: {car}\n"
+            f"Progress: {current}/{total}"
         )
 
         reset(chat_id)
