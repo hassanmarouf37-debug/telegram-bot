@@ -135,9 +135,9 @@ def get_car(item_code):
     selected_car = cars[idx]
 
     if row:
-        cur.execute("UPDATE car_counter SET idx=%s WHERE item=%s", (idx + 1, item_code))
+        cur.execute("UPDATE zip_counter SET idx=%s WHERE zip=%s", (idx + 1, item_code))
     else:
-        cur.execute("INSERT INTO car_counter (item, idx) VALUES (%s, %s)", (item_code, 1))
+        cur.execute("INSERT INTO zip_counter (zip, idx) VALUES (%s, %s)", (item_code, 1))
 
     conn.commit()
     conn.close()
@@ -194,8 +194,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # TAX QTY
     if state and state.get("step") == "qty":
         if not text.isdigit():
-            await update.message.reply_text("❌ اكتب رقم صحيح")
-            return
+            return  # <-- SILENT MODE (no error message)
 
         user_data[chat_id] = {"step": "price", "qty": int(text)}
         await update.message.reply_text("اكتب السعر والضريبة: 299.99 7.5")
@@ -237,16 +236,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if state and state.get("step") == "zip":
         if not text.isdigit():
-            await update.message.reply_text("❌ ZIP غير صحيح")
-            return
+            return  # <-- SILENT MODE
 
         row = get_address(text)
 
         if not row:
-            await update.message.reply_text("❌ ZIP غير موجود")
-            user_data.pop(chat_id, None)
-            await start(update, context)
-            return
+            return  # <-- SILENT MODE
 
         data, current, remaining = row
 
