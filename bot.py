@@ -49,10 +49,13 @@ def init_db():
 init_db()
 
 # ======================
-# UTIL
+# UTIL (FIXED TIME 24H)
 # ======================
 def rnd_time():
-    return f"{random.randint(5,10):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}"
+    hour = random.randint(10, 17)
+    minute = random.randint(0, 59)
+    second = random.randint(0, 59)
+    return f"{hour:02d}:{minute:02d}:{second:02d}"
 
 def fix(x):
     return math.floor(x * 100) / 100
@@ -98,7 +101,7 @@ def get_address(zip_code):
     return selected, idx + 1, total - (idx + 1)
 
 # ======================
-# CAR SYSTEM (LOOP + CSV)
+# CAR SYSTEM
 # ======================
 def get_car(item_code):
     conn = get_conn()
@@ -114,7 +117,6 @@ def get_car(item_code):
 
     with open("cars.csv", newline='', encoding="utf-8") as f:
         reader = csv.DictReader(f)
-
         for r in reader:
             if r["item"] == item_code:
                 mspn = r["mspn"]
@@ -173,13 +175,23 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_data.get(chat_id)
 
     # ======================
-    # TAX
+    # TAX START (UPDATED BUTTONS)
     # ======================
     if text == "💰 Tax":
         user_data[chat_id] = {"step": "qty"}
-        await update.message.reply_text("اختر عدد المنتجات:")
+
+        keyboard = [
+            ["1", "2", "3", "4", "5"],
+            ["6", "7", "8", "9", "10"]
+        ]
+
+        await update.message.reply_text(
+            "اختر عدد المنتجات:",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
         return
 
+    # TAX QTY
     if state and state.get("step") == "qty":
         if not text.isdigit():
             await update.message.reply_text("❌ اكتب رقم صحيح")
@@ -189,6 +201,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("اكتب السعر والضريبة: 299.99 7.5")
         return
 
+    # TAX PRICE
     if state and state.get("step") == "price":
         try:
             price, tax = map(float, text.split())
