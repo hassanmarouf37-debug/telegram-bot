@@ -49,7 +49,7 @@ def init_db():
 init_db()
 
 # ======================
-# UTIL (FIXED TIME 24H)
+# UTIL
 # ======================
 def rnd_time():
     hour = random.randint(10, 17)
@@ -59,6 +59,9 @@ def rnd_time():
 
 def fix(x):
     return math.floor(x * 100) / 100
+
+def reset(chat_id):
+    user_data.pop(chat_id, None)
 
 # ======================
 # ADDRESS SYSTEM
@@ -135,9 +138,9 @@ def get_car(item_code):
     selected_car = cars[idx]
 
     if row:
-        cur.execute("UPDATE zip_counter SET idx=%s WHERE zip=%s", (idx + 1, item_code))
+        cur.execute("UPDATE car_counter SET idx=%s WHERE item=%s", (idx + 1, item_code))
     else:
-        cur.execute("INSERT INTO zip_counter (zip, idx) VALUES (%s, %s)", (item_code, 1))
+        cur.execute("INSERT INTO car_counter (item, idx) VALUES (%s, %s)", (item_code, 1))
 
     conn.commit()
     conn.close()
@@ -148,6 +151,8 @@ def get_car(item_code):
 # START
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reset(update.message.chat_id)
+
     keyboard = [
         ["💰 Tax"],
         ["🏠 Home Address"],
@@ -175,9 +180,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = user_data.get(chat_id)
 
     # ======================
-    # TAX START (UPDATED BUTTONS)
+    # TAX START
     # ======================
     if text == "💰 Tax":
+        reset(chat_id)
         user_data[chat_id] = {"step": "qty"}
 
         keyboard = [
@@ -194,7 +200,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # TAX QTY
     if state and state.get("step") == "qty":
         if not text.isdigit():
-            return  # <-- SILENT MODE (no error message)
+            return
 
         user_data[chat_id] = {"step": "price", "qty": int(text)}
         await update.message.reply_text("اكتب السعر والضريبة: 299.99 7.5")
@@ -218,7 +224,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Time: {rnd_time()}"
             )
 
-            user_data.pop(chat_id, None)
+            reset(chat_id)
             await start(update, context)
             return
 
@@ -230,18 +236,19 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ADDRESS
     # ======================
     if text == "🏠 Home Address":
+        reset(chat_id)
         user_data[chat_id] = {"step": "zip"}
         await update.message.reply_text("اكتب ZIP code:")
         return
 
     if state and state.get("step") == "zip":
         if not text.isdigit():
-            return  # <-- SILENT MODE
+            return
 
         row = get_address(text)
 
         if not row:
-            return  # <-- SILENT MODE
+            return
 
         data, current, remaining = row
 
@@ -254,7 +261,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Remaining: {remaining}"
         )
 
-        user_data.pop(chat_id, None)
+        reset(chat_id)
         await start(update, context)
         return
 
@@ -262,6 +269,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # CAR SYSTEM
     # ======================
     if text == "🚗 Car":
+        reset(chat_id)
         user_data[chat_id] = {"step": "car"}
         await update.message.reply_text("اكتب Item Number:")
         return
@@ -273,7 +281,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not result:
             await update.message.reply_text("❌ Item غير موجود")
-            user_data.pop(chat_id, None)
+            reset(chat_id)
             await start(update, context)
             return
 
@@ -285,7 +293,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Car: {car}"
         )
 
-        user_data.pop(chat_id, None)
+        reset(chat_id)
         await start(update, context)
         return
 
